@@ -1,9 +1,8 @@
 fakeredis: A fake version of a redis-py
 =======================================
 
-.. image:: https://secure.travis-ci.org/jamesls/fakeredis.svg?branch=master
-   :target: http://travis-ci.org/jamesls/fakeredis
-
+.. image:: https://github.com/jamesls/fakeredis/actions/workflows/test.yml/badge.svg
+   :target: https://github.com/jamesls/fakeredis/actions/workflows/test.yml
 
 .. image:: https://coveralls.io/repos/jamesls/fakeredis/badge.svg?branch=master
    :target: https://coveralls.io/r/jamesls/fakeredis
@@ -26,12 +25,13 @@ be automatically installed.
 Alternatives
 ============
 
-Consider using birdisle_ instead of fakeredis. It embeds the redis codebase
-into a Python extension, so it implements the full redis command set and
-behaves far more closely to a real redis implementation. The disadvantage is
-that it currently only works on Linux.
+Consider using redislite_ instead of fakeredis. It runs a real redis server and
+connects to it over a UNIX domain socket, so it will behave just like a real
+server. Another alternative is birdisle_, which runs the redis code as a Python
+extension (no separate process), but which is currently unmaintained.
 
 .. _birdisle: https://birdisle.readthedocs.io/en/latest/
+.. _redislite: https://redislite.readthedocs.io/en/latest/
 
 
 How to Use
@@ -95,7 +95,58 @@ your error handling. Simply set the connected attribute of the server to
 
 Fakeredis implements the same interface as `redis-py`_, the
 popular redis client for python, and models the responses
-of redis 5.0.
+of redis 6.0 (although most new feature in 6.0 are not supported).
+
+Support for aioredis
+====================
+
+You can also use fakeredis to mock out aioredis_.  This is a much newer
+addition to fakeredis (added in 1.4.0) with less testing, so your mileage may
+vary. Both version 1 and version 2 (which have very different APIs) are
+supported. The API provided by fakeredis depends on the version of aioredis that is
+installed.
+
+.. _aioredis: https://aioredis.readthedocs.io/
+
+aioredis 1.x
+------------
+
+Example:
+
+.. code-block:: python
+
+  >>> import fakeredis.aioredis
+  >>> r = await fakeredis.aioredis.create_redis_pool()
+  >>> await r.set('foo', 'bar')
+  True
+  >>> await r.get('foo')
+  b'bar'
+
+You can pass a `FakeServer` as the first argument to `create_redis` or
+`create_redis_pool` to share state (you can even share state with a
+`fakeredis.FakeRedis`). It should even be safe to do this state sharing between
+threads (as long as each connection/pool is only used in one thread).
+
+It is highly recommended that you only use the aioredis support with
+Python 3.5.3 or higher. Earlier versions will not work correctly with
+non-default event loops.
+
+aioredis 2.x
+------------
+
+Example:
+
+.. code-block:: python
+
+  >>> import fakeredis.aioredis
+  >>> r = fakeredis.aioredis.FakeRedis()
+  >>> await r.set('foo', 'bar')
+  True
+  >>> await r.get('foo')
+  b'bar'
+
+The support is essentially the same as for redis-py e.g., you can pass a
+`server` keyword argument to the `FakeRedis` constructor.
 
 Porting to fakeredis 1.0
 ========================
@@ -105,19 +156,18 @@ improve the Lua scripting emulation. It has a few backwards incompatibilities
 that may require changes to your code:
 
 1. By default, each FakeRedis or FakeStrictRedis instance contains its own
-   state. This is equivalent to the `singleton=True` option to previous
+   state. This is equivalent to the `singleton=False` option to previous
    versions of fakeredis. This change was made to improve isolation between
    tests. If you need to share state between instances, create a FakeServer,
    as described above.
 
-2. FakeRedis is now a subclass of FakeStrictRedis, and similarly
+2. FakeRedis is now a subclass of Redis, and similarly
    FakeStrictRedis is a subclass of StrictRedis. Code that uses `isinstance`
    may behave differently.
 
 3. The `connected` attribute is now a property of `FakeServer`, rather than
    `FakeRedis` or `FakeStrictRedis`. You can still pass the property to the
    constructor of the latter (provided no server is provided).
-
 
 
 Unimplemented Commands
@@ -127,25 +177,22 @@ All of the redis commands are implemented in fakeredis with
 these exceptions:
 
 
-connection
-----------
-
- * auth
- * quit
-
-
 server
 ------
 
+ * acl load
+ * acl save
+ * acl list
+ * acl users
+ * acl getuser
+ * acl setuser
+ * acl deluser
+ * acl cat
+ * acl genpass
+ * acl whoami
+ * acl log
+ * acl help
  * bgrewriteaof
- * client id
- * client kill
- * client list
- * client getname
- * client pause
- * client reply
- * client setname
- * client unblock
  * command
  * command count
  * command getkeys
@@ -157,12 +204,16 @@ server
  * debug object
  * debug segfault
  * info
+ * lolwut
  * memory doctor
  * memory help
  * memory malloc-stats
  * memory purge
  * memory stats
  * memory usage
+ * module list
+ * module load
+ * module unload
  * monitor
  * role
  * shutdown
@@ -170,7 +221,32 @@ server
  * replicaof
  * slowlog
  * sync
- * time
+ * psync
+ * latency doctor
+ * latency graph
+ * latency history
+ * latency latest
+ * latency reset
+ * latency help
+
+
+connection
+----------
+
+ * auth
+ * client caching
+ * client id
+ * client kill
+ * client list
+ * client getname
+ * client getredir
+ * client pause
+ * client reply
+ * client setname
+ * client tracking
+ * client unblock
+ * hello
+ * quit
 
 
 string
@@ -179,6 +255,7 @@ string
  * bitfield
  * bitop
  * bitpos
+ * stralgo
 
 
 sorted_set
@@ -194,15 +271,18 @@ cluster
 -------
 
  * cluster addslots
+ * cluster bumpepoch
  * cluster count-failure-reports
  * cluster countkeysinslot
  * cluster delslots
  * cluster failover
+ * cluster flushslots
  * cluster forget
  * cluster getkeysinslot
  * cluster info
  * cluster keyslot
  * cluster meet
+ * cluster myid
  * cluster nodes
  * cluster replicate
  * cluster reset
@@ -219,13 +299,17 @@ cluster
 generic
 -------
 
- * dump
  * migrate
  * object
- * restore
  * touch
  * wait
 
+
+
+list
+----
+
+ * lpos
 
 
 pubsub
@@ -238,8 +322,6 @@ scripting
 ---------
 
  * script debug
- * script exists
- * script flush
  * script kill
 
 
@@ -295,10 +377,14 @@ bugs in Github.
    generally not produce the same results, and in Python versions before 3.6
    may produce different results each time the process is re-run.
 
-7. SCAN/ZSCAN/HSCAN/SSCAN will not necessary iterate all items if items are
+7. SCAN/ZSCAN/HSCAN/SSCAN will not necessarily iterate all items if items are
    deleted or renamed during iteration. They also won't necessarily iterate in
    the same chunk sizes or the same order as redis.
 
+8. DUMP/RESTORE will not return or expect data in the RDB format. Instead the
+   `pickle` module is used to mimic an opaque and non-standard format.
+   **WARNING**: Do not use RESTORE with untrusted data, as a malicious pickle
+   can execute arbitrary code.
 
 Contributing
 ============
@@ -319,47 +405,117 @@ To ensure parity with the real redis, there are a set of integration tests
 that mirror the unittests.  For every unittest that is written, the same
 test is run against a real redis instance using a real redis-py client
 instance.  In order to run these tests you must have a redis server running
-on localhost, port 6379 (the default settings).  The integration tests use
-db=10 in order to minimize collisions with an existing redis instance.
+on localhost, port 6379 (the default settings). **WARNING**: the tests will
+completely wipe your database!
 
 
-To run all the tests, install the requirements file::
+First install the requirements file::
 
     pip install -r requirements.txt
 
-If you just want to run the unittests::
+To run all the tests::
 
-    pytest test_fakeredis.py::TestFakeStrictRedis test_fakeredis.py::TestFakeRedis
+    pytest
+
+If you only want to run tests against fake redis, without a real redis::
+
+    pytest -m fake
 
 Because this module is attempting to provide the same interface as `redis-py`_,
 the python bindings to redis, a reasonable way to test this to to take each
 unittest and run it against a real redis server.  fakeredis and the real redis
-server should give the same result.  This ensures parity between the two.  You
-can run these "integration" tests like this::
+server should give the same result. To run tests against a real redis instance
+instead::
 
-    pytest test_fakeredis.py::TestRealStrictRedis test_fakeredis.py::TestRealRedis test_fakeredis_hypothesis.py
-
-In terms of implementation, ``TestRealRedis`` is a subclass of
-``TestFakeRedis`` that overrides a factory method to create
-an instance of ``redis.Redis`` (an actual python client for redis)
-instead of ``fakeredis.FakeStrictRedis``.
-
-To run both the unittests and the "integration" tests, run::
-
-    pytest
+    pytest -m real
 
 If redis is not running and you try to run tests against a real redis server,
-these tests will have a result of 'S' for skipped.
+these tests will have a result of 's' for skipped.
 
 There are some tests that test redis blocking operations that are somewhat
 slow.  If you want to skip these tests during day to day development,
 they have all been tagged as 'slow' so you can skip them by running::
 
-    pytest -m "not slow" test_fakeredis.py
+    pytest -m "not slow"
 
 
 Revision history
 ================
+
+1.6.1
+-----
+- `#305 <https://github.com/jamesls/fakeredis/pull/305>`_ Some packaging modernisation
+- `#306 <https://github.com/jamesls/fakeredis/pull/306>`_ Fix FakeRedisMixin.from_url for unix sockets
+- `#308 <https://github.com/jamesls/fakeredis/pull/308>`_ Remove use of async_generator from tests
+
+1.6.0
+-----
+- `#304 <https://github.com/jamesls/fakeredis/pull/304>`_ Support aioredis 2
+- `#302 <https://github.com/jamesls/fakeredis/pull/302>`_ Switch CI from Travis CI to Github Actions
+
+1.5.2
+-----
+- Depend on `aioredis<2` (aioredis 2.x is a backwards-incompatible rewrite).
+
+1.5.1
+-----
+- `#298 <https://github.com/jamesls/fakeredis/pull/298>`_ Fix a deadlock caused
+  by garbage collection
+
+1.5.0
+-----
+- Fix clearing of watches when a transaction is aborted.
+- Support Python 3.9 and drop support for Python 3.5.
+- Update handling of EXEC failures to match redis 6.0.6+.
+- `#293 <https://github.com/jamesls/fakeredis/pull/293>`_ Align
+  `FakeConnection` constructor signature to base class
+- Skip hypothesis tests on 32-bit Redis servers.
+
+1.4.5
+-----
+- `#285 <https://github.com/jamesls/fakeredis/pull/285>`_ Add support for DUMP
+  and RESTORE commands
+- `#286 <https://github.com/jamesls/fakeredis/pull/286>`_ Add support for TYPE
+  option to SCAN command
+
+1.4.4
+-----
+- `#281 <https://github.com/jamesls/fakeredis/pull/281>`_ Add support for
+  SCRIPT EXISTS and SCRIPT FLUSH subcommands
+- `#280 <https://github.com/jamesls/fakeredis/pull/280>`_ Fix documentation
+  about singleton argument
+
+1.4.3
+-----
+- `#277 <https://github.com/jamesls/fakeredis/pull/277>`_ Implement SET with KEEPTTL
+- `#278 <https://github.com/jamesls/fakeredis/pull/278>`_ Handle indefinite
+  timeout for PUBSUB commands
+
+1.4.2
+-----
+- `#269 <https://github.com/jamesls/fakeredis/issues/269>`_ Prevent passing
+  booleans from Lua to redis
+- `#254 <https://github.com/jamesls/fakeredis/issues/254>`_ Implement TIME command
+- `#232 <https://github.com/jamesls/fakeredis/issues/232>`_ Implement ZADD with INCR
+- Rework of unit tests to use more pytest idioms
+
+1.4.1
+-----
+- `#268 <https://github.com/jamesls/fakeredis/pull/268>`_ Support redis-py 3.5
+  (no code changes, just setup.py)
+
+1.4.0
+-----
+- Add support for aioredis.
+- Fix interaction of no-op SREM with WATCH.
+
+1.3.1
+-----
+- Make errors from Lua behave more like real redis
+
+1.3.0
+-----
+- `#266 <https://github.com/jamesls/fakeredis/pull/266>`_ Implement redis.log in Lua
 
 1.2.1
 -----

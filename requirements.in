@@ -1,10 +1,13 @@
+aioredis
 coverage
 flake8
 hypothesis
 lupa
 pytest
+pytest-asyncio
 pytest-cov
-redis==3.4.1       # Latest at time of writing
+pytest-mock
+redis==3.5.3       # Latest at time of writing
 six
 sortedcontainers
 python-geohash
